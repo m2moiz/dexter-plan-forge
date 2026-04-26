@@ -836,19 +836,9 @@ function HighlightableText({
 
 function PlanGeneratingScreen() {
   const plan = useDexterStore((state) => state.plan);
-  const setCurrentScreen = useDexterStore((state) => state.setCurrentScreen);
-  const [visibleItems, setVisibleItems] = useState(1);
-
-  useEffect(() => {
-    const feedTimer = window.setInterval(() => {
-      setVisibleItems((current) => Math.min(current + 1, plan.activity.length));
-    }, 1500);
-    const screenTimer = window.setTimeout(() => setCurrentScreen("PLAN_VIEW"), 12000);
-    return () => {
-      window.clearInterval(feedTimer);
-      window.clearTimeout(screenTimer);
-    };
-  }, [plan.activity.length, setCurrentScreen]);
+  const streamedActivity = useDexterStore((state) => state.streamedActivity);
+  const streamedSections = useDexterStore((state) => state.streamedSections);
+  const apiError = useDexterStore((state) => state.apiError);
 
   return (
     <main className={cn(screenClass, "grid min-h-screen grid-cols-1 lg:grid-cols-[60%_40%]")}> 
@@ -861,7 +851,9 @@ function PlanGeneratingScreen() {
         <h1 className="mt-4 font-display text-5xl font-semibold">Experiment skeleton</h1>
         <div className="mt-10 space-y-4">
           {plan.sections.map((section, index) => {
-            const filled = index < visibleItems;
+            const streamedSection = streamedSections.find((item) => item.id === section.id);
+            const filled = Boolean(streamedSection);
+            const displaySection = streamedSection ?? section;
             return (
               <Card
                 key={section.id}
@@ -871,11 +863,11 @@ function PlanGeneratingScreen() {
                 )}
               >
                 <div className="flex items-center justify-between gap-4">
-                  <h2 className="font-display text-2xl font-semibold">{section.title}</h2>
-                  <span className="font-mono text-xs font-bold uppercase">{section.label}</span>
+                  <h2 className="font-display text-2xl font-semibold">{displaySection.title}</h2>
+                  <span className="font-mono text-xs font-bold uppercase">{displaySection.label}</span>
                 </div>
                 <p className="mt-4 text-sm leading-6">
-                  {filled ? section.content[0] : "████████████████████ ███████████████ ███████████"}
+                  {filled ? displaySection.content[0] : "████████████████████ ███████████████ ███████████"}
                 </p>
               </Card>
             );
@@ -886,11 +878,12 @@ function PlanGeneratingScreen() {
       <section className="bg-primary p-8 text-primary-foreground lg:p-12">
         <h2 className="font-display text-4xl font-semibold">Activity feed</h2>
         <div className="mt-10 space-y-4 font-mono text-sm font-bold uppercase leading-7">
-          {plan.activity.slice(0, visibleItems).map((line) => (
+          {(streamedActivity.length ? streamedActivity : ["Opening stream to /api/plan..."]).map((line) => (
             <p key={line} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
               {line}
             </p>
           ))}
+          {apiError && <p className="border-2 border-industrial bg-card p-3 text-accent-foreground">{apiError}</p>}
         </div>
       </section>
     </main>
