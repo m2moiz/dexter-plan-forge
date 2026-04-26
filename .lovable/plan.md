@@ -1,55 +1,81 @@
-I’ll add intuitive back navigation between Dexter’s workflow screens and move the screen-specific interaction state into the shared store so users can move forward/back without losing their work.
+I’ll address the frontend-spec feedback by replacing the current mock-only flow with a real API-driven flow, while keeping the existing Dexter UI interactions and the required TanStack Start project structure.
 
-## Recommended button location
+## Important note about the “Next.js app structure” feedback
 
-The optimal location is the existing top header/action area on each screen:
+This Lovable project is intentionally a TanStack Start/Vite app, not a Next.js app. I should not convert it to Next.js inside this environment because the project’s runtime, routing, and deployment are TanStack-based. Instead, I’ll make the frontend behave according to the spec at the API/data-flow level:
 
 ```text
-[Back]    current context / hypothesis                         [Continue]
+Hypothesis input
+  -> POST /api/qc
+  -> literature graph / QC results
+  -> POST /api/plan streaming
+  -> report view with generated plan
 ```
-
-Why this fits best:
-- It matches the existing “Continue to Plan” placement instead of introducing a new control pattern.
-- Back belongs on the left, forward belongs on the right, which is the most natural reading/navigation flow.
-- It keeps the canvas/report area uncluttered and doesn’t compete with node details, lasso tools, or report text selection.
-- On mobile, the controls can stack or remain compact in the header without blocking content.
 
 ## Implementation plan
 
-1. **Add workflow navigation helpers**
-   - Define the ordered workflow screens: hypothesis input → literature graph → plan generation → report view.
-   - Add `goToPreviousScreen` / `goToNextScreen` style helpers in the Zustand store, or explicit actions for the few transitions.
-   - Keep the loading intro out of normal back navigation.
+1. **Add client-safe API types and response normalization**
+   - Define shared TypeScript types for QC and plan responses.
+   - Add adapters that can map API payloads into the existing `DexterPlan` UI model.
+   - Keep `samplePlan` only as a local fallback/demo response, not as the primary runtime source.
 
-2. **Add a reusable navigation bar/control**
-   - Create a consistent “Back” button treatment that uses the same industrial/Dexter visual language as the current buttons.
-   - Place it in the left side of screen headers, with forward/continue actions on the right.
-   - On the first input screen, either hide Back or disable it so there’s no confusing dead action.
+2. **Implement `/api/qc` route**
+   - Add a TanStack server route at `src/routes/api/qc.ts`.
+   - Validate input with Zod: hypothesis text, length bounds, required body shape.
+   - Return literature graph data, candidate papers, edges, and QC/status information.
+   - If no real backend/LLM integration is configured yet, use a deterministic fallback generated from the hypothesis so the frontend no longer reads directly from static client data.
 
-3. **Preserve hypothesis input state**
-   - The hypothesis already lives in the shared store, so it should remain when moving from the graph back to the first screen.
-   - I’ll keep that behavior and ensure no transition resets it.
+3. **Implement streaming `/api/plan` route**
+   - Add a TanStack server route at `src/routes/api/plan.ts`.
+   - Validate request input.
+   - Return a streaming response, likely newline-delimited JSON events, for generation progress and final plan data.
+   - Emit events such as:
 
-4. **Preserve literature graph state**
-   - Move these currently local graph states into the shared Dexter store:
-     - visited/read node IDs
-     - bookmarked node IDs
-     - selected/open paper
-   - This makes node reads/bookmarks survive when users go to report generation/report view and return.
+```text
+{ "type": "activity", "message": "Searching literature..." }
+{ "type": "section", "section": { ... } }
+{ "type": "final", "plan": { ... } }
+```
 
-5. **Preserve report interaction state where useful**
-   - Keep report highlights/annotations local unless you want them preserved when going back to graph and returning to report.
-   - Recommended: preserve them too, because they are user-created edits. I’ll move highlights and active reference state into the store so report selections don’t disappear across navigation.
+4. **Refactor the Zustand store from mock state to API lifecycle state**
+   - Add fields like `qcStatus`, `planStatus`, `apiError`, and streamed `activity`.
+   - Add actions to start QC, store graph results, start plan generation, append streamed events, and commit the final plan.
+   - Preserve the existing UI state you requested earlier: hypothesis text, visited/bookmarked nodes, selected paper, report highlights, and queued corrections.
 
-6. **Adjust plan generation back behavior**
-   - Add a Back button on the generating screen so users can return to the graph while generation is in progress.
-   - If they leave the generating screen, its timers will cleanly stop. Returning to it can restart the generation animation without clearing graph/hypothesis state.
+5. **Wire hypothesis submission to `/api/qc`**
+   - Change the “GENERATE PLAN” button so it posts the current hypothesis to `/api/qc`.
+   - Show a loading/error state instead of immediately jumping to the mock graph.
+   - Populate the graph from the QC response, then navigate to the literature graph screen.
 
-7. **Build verification**
-   - Run the build after changes to catch TypeScript and routing issues.
+6. **Wire plan generation to streaming `/api/plan`**
+   - Change “Continue to Plan” so it starts a streaming request to `/api/plan`.
+   - Update the generation screen in real time from stream events instead of the hardcoded timer over `samplePlan.activity`.
+   - Move to report view when the final plan event arrives.
+   - Keep a safe fallback if the stream fails, with a visible retry path.
+
+7. **Keep report interactions working with generated data**
+   - Ensure the report view, squiggly highlights, right-click “Make adjustment,” queued corrections, hover editor, PDF export, references, and slime/blob section launcher work with generated plan sections and citations.
+
+8. **Verification**
+   - Run TypeScript/build checks.
+   - Manually verify the main flow:
+     - enter hypothesis
+     - call QC
+     - inspect graph
+     - bookmark/read nodes
+     - stream plan
+     - report loads
+     - annotations/corrections still work
+     - back navigation preserves state
 
 ## Technical notes
 
-- Changes will mainly touch `src/lib/dexter-store.ts` and `src/routes/index.tsx`, with small styling additions in `src/styles.css` if needed.
-- I’ll avoid changing the TanStack route structure since this is an in-app workflow, not separate URL pages.
-- The forward/back buttons will use existing `Button` styling and the current warm industrial theme.
+- Files likely touched:
+  - `src/routes/index.tsx`
+  - `src/lib/dexter-store.ts`
+  - `src/lib/mock-plan.ts` or new adapter/types files under `src/lib/`
+  - new `src/routes/api/qc.ts`
+  - new `src/routes/api/plan.ts`
+- I’ll use TanStack server routes, not Supabase Edge Functions or Next.js API routes.
+- I’ll avoid changing the route bootstrap files unless required for build compatibility.
+- The API route implementations will be written so they can later be swapped from deterministic fallback logic to a real backend/AI provider without rewriting the frontend workflow.
