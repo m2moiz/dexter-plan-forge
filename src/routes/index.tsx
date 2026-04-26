@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { type PlanStreamEvent, type QcResponse } from "@/lib/dexter-api";
 import { type ReportHighlight, useDexterStore } from "@/lib/dexter-store";
 import { exampleHypotheses, type Paper, type PlanSection } from "@/lib/mock-plan";
+import type { CorrectionSeverityType } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -226,9 +227,9 @@ function HypothesisInputScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hypothesis }),
       });
-      const payload = (await response.json()) as QcResponse | { error?: string };
+      const payload = await response.json();
       if (!response.ok) throw new Error("error" in payload && payload.error ? payload.error : "QC failed.");
-      finishQc(payload as QcResponse);
+      finishQc(payload);
     } catch (error) {
       failApi(error instanceof Error ? error.message : "QC failed.");
     }
@@ -318,6 +319,7 @@ function LiteratureGraphScreen() {
   const hypothesis = useDexterStore((state) => state.hypothesis);
   const plan = useDexterStore((state) => state.plan);
   const qcPayload = useDexterStore((state) => state.qcPayload);
+  const setPlanId = useDexterStore((state) => state.setPlanId);
   const selectedPaper = useDexterStore((state) => state.currentlySelectedPaper);
   const selectPaper = useDexterStore((state) => state.selectPaper);
   const startPlanStream = useDexterStore((state) => state.startPlanStream);
@@ -346,9 +348,10 @@ function LiteratureGraphScreen() {
       const response = await fetch("/api/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(qcPayload),
+        body: JSON.stringify({ hypothesis, novelty_check: qcPayload.novelty_check, qc_sources: qcPayload.sources }),
       });
       if (!response.ok || !response.body) throw new Error("Plan generation failed.");
+      setPlanId(response.headers.get("X-Plan-Id"));
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -359,9 +362,9 @@ function LiteratureGraphScreen() {
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
-        lines.filter(Boolean).forEach((line) => applyPlanStreamEvent(JSON.parse(line) as PlanStreamEvent));
+        lines.filter(Boolean).forEach((line) => applyPlanStreamEvent(JSON.parse(line)));
       }
-      if (buffer.trim()) applyPlanStreamEvent(JSON.parse(buffer) as PlanStreamEvent);
+      if (buffer.trim()) applyPlanStreamEvent(JSON.parse(buffer));
     } catch (error) {
       failApi(error instanceof Error ? error.message : "Plan generation failed.");
     }
