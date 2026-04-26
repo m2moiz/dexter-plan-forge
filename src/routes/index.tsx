@@ -7,6 +7,7 @@ import { Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { type PlanStreamEvent, type QcResponse } from "@/lib/dexter-api";
 import { type ReportHighlight, useDexterStore } from "@/lib/dexter-store";
 import { exampleHypotheses, type Paper, type PlanSection } from "@/lib/mock-plan";
 import { cn } from "@/lib/utils";
@@ -211,7 +212,27 @@ function LoadingScreen() {
 function HypothesisInputScreen() {
   const hypothesis = useDexterStore((state) => state.hypothesis);
   const setHypothesis = useDexterStore((state) => state.setHypothesis);
-  const setCurrentScreen = useDexterStore((state) => state.setCurrentScreen);
+  const qcStatus = useDexterStore((state) => state.qcStatus);
+  const apiError = useDexterStore((state) => state.apiError);
+  const startQc = useDexterStore((state) => state.startQc);
+  const finishQc = useDexterStore((state) => state.finishQc);
+  const failApi = useDexterStore((state) => state.failApi);
+
+  const runQc = async () => {
+    startQc();
+    try {
+      const response = await fetch("/api/qc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hypothesis }),
+      });
+      const payload = (await response.json()) as QcResponse | { error?: string };
+      if (!response.ok) throw new Error("error" in payload && payload.error ? payload.error : "QC failed.");
+      finishQc(payload as QcResponse);
+    } catch (error) {
+      failApi(error instanceof Error ? error.message : "QC failed.");
+    }
+  };
 
   return (
     <main className={cn(screenClass, "flex min-h-screen flex-col")}> 
@@ -250,11 +271,13 @@ function HypothesisInputScreen() {
         </div>
         <Button
           type="button"
-          onClick={() => setCurrentScreen("LITERATURE_GRAPH")}
+          onClick={runQc}
+          disabled={qcStatus === "loading" || hypothesis.trim().length < 20}
           className="dexter-cta-shadow mt-10 h-16 rounded-none border-2 border-industrial bg-accent px-10 font-mono text-base font-bold uppercase text-accent-foreground hover:bg-accent hover:shadow-[8px_8px_0px_var(--industrial)]"
         >
-          GENERATE PLAN
+          {qcStatus === "loading" ? "RUNNING QC..." : "GENERATE PLAN"}
         </Button>
+        {apiError && <p className="mx-auto mt-4 max-w-xl font-mono text-xs font-bold uppercase text-accent">{apiError}</p>}
         </div>
       </section>
     </main>
@@ -294,9 +317,12 @@ function WorkflowBackButton() {
 function LiteratureGraphScreen() {
   const hypothesis = useDexterStore((state) => state.hypothesis);
   const plan = useDexterStore((state) => state.plan);
+  const qcPayload = useDexterStore((state) => state.qcPayload);
   const selectedPaper = useDexterStore((state) => state.currentlySelectedPaper);
   const selectPaper = useDexterStore((state) => state.selectPaper);
-  const beginPlanGeneration = useDexterStore((state) => state.beginPlanGeneration);
+  const startPlanStream = useDexterStore((state) => state.startPlanStream);
+  const applyPlanStreamEvent = useDexterStore((state) => state.applyPlanStreamEvent);
+  const failApi = useDexterStore((state) => state.failApi);
   const visitedNodeIds = useDexterStore((state) => state.visitedNodeIds);
   const bookmarkedNodeIds = useDexterStore((state) => state.bookmarkedNodeIds);
   const markNodeVisited = useDexterStore((state) => state.markNodeVisited);
@@ -313,6 +339,33 @@ function LiteratureGraphScreen() {
   const [graphSize, setGraphSize] = useState({ width: 1200, height: 720 });
   const graphWrapRef = useRef<HTMLDivElement | null>(null);
   const selectedPaperId = selectedPaper?.id;
+
+  const generatePlan = async () => {
+    startPlanStream();
+    try {
+      const response = await fetch("/api/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(qcPayload),
+      });
+      if (!response.ok || !response.body) throw new Error("Plan generation failed.");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        lines.filter(Boolean).forEach((line) => applyPlanStreamEvent(JSON.parse(line) as PlanStreamEvent));
+      }
+      if (buffer.trim()) applyPlanStreamEvent(JSON.parse(buffer) as PlanStreamEvent);
+    } catch (error) {
+      failApi(error instanceof Error ? error.message : "Plan generation failed.");
+    }
+  };
 
   const graphData = useMemo<ForceGraphData>(
     () => ({
@@ -635,7 +688,7 @@ function LiteratureGraphScreen() {
       <WorkflowHeader title={hypothesis}>
         <Button
           type="button"
-          onClick={beginPlanGeneration}
+          onClick={generatePlan}
           className="h-10 shrink-0 rounded-none border-2 border-industrial bg-accent px-5 font-mono text-xs font-bold uppercase text-accent-foreground hover:bg-accent"
         >
           Continue to Plan
@@ -783,19 +836,9 @@ function HighlightableText({
 
 function PlanGeneratingScreen() {
   const plan = useDexterStore((state) => state.plan);
-  const setCurrentScreen = useDexterStore((state) => state.setCurrentScreen);
-  const [visibleItems, setVisibleItems] = useState(1);
-
-  useEffect(() => {
-    const feedTimer = window.setInterval(() => {
-      setVisibleItems((current) => Math.min(current + 1, plan.activity.length));
-    }, 1500);
-    const screenTimer = window.setTimeout(() => setCurrentScreen("PLAN_VIEW"), 12000);
-    return () => {
-      window.clearInterval(feedTimer);
-      window.clearTimeout(screenTimer);
-    };
-  }, [plan.activity.length, setCurrentScreen]);
+  const streamedActivity = useDexterStore((state) => state.streamedActivity);
+  const streamedSections = useDexterStore((state) => state.streamedSections);
+  const apiError = useDexterStore((state) => state.apiError);
 
   return (
     <main className={cn(screenClass, "grid min-h-screen grid-cols-1 lg:grid-cols-[60%_40%]")}> 
@@ -808,7 +851,9 @@ function PlanGeneratingScreen() {
         <h1 className="mt-4 font-display text-5xl font-semibold">Experiment skeleton</h1>
         <div className="mt-10 space-y-4">
           {plan.sections.map((section, index) => {
-            const filled = index < visibleItems;
+            const streamedSection = streamedSections.find((item) => item.id === section.id);
+            const filled = Boolean(streamedSection);
+            const displaySection = streamedSection ?? section;
             return (
               <Card
                 key={section.id}
@@ -818,11 +863,11 @@ function PlanGeneratingScreen() {
                 )}
               >
                 <div className="flex items-center justify-between gap-4">
-                  <h2 className="font-display text-2xl font-semibold">{section.title}</h2>
-                  <span className="font-mono text-xs font-bold uppercase">{section.label}</span>
+                  <h2 className="font-display text-2xl font-semibold">{displaySection.title}</h2>
+                  <span className="font-mono text-xs font-bold uppercase">{displaySection.label}</span>
                 </div>
                 <p className="mt-4 text-sm leading-6">
-                  {filled ? section.content[0] : "████████████████████ ███████████████ ███████████"}
+                  {filled ? displaySection.content[0] : "████████████████████ ███████████████ ███████████"}
                 </p>
               </Card>
             );
@@ -833,11 +878,12 @@ function PlanGeneratingScreen() {
       <section className="bg-primary p-8 text-primary-foreground lg:p-12">
         <h2 className="font-display text-4xl font-semibold">Activity feed</h2>
         <div className="mt-10 space-y-4 font-mono text-sm font-bold uppercase leading-7">
-          {plan.activity.slice(0, visibleItems).map((line) => (
+          {(streamedActivity.length ? streamedActivity : ["Opening stream to /api/plan..."]).map((line) => (
             <p key={line} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
               {line}
             </p>
           ))}
+          {apiError && <p className="border-2 border-industrial bg-card p-3 text-accent-foreground">{apiError}</p>}
         </div>
       </section>
     </main>

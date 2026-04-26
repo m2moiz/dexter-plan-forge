@@ -1,5 +1,6 @@
 import { create } from "zustand";
 
+import { type PlanStreamEvent, type QcResponse, planToQcResponse } from "./dexter-api";
 import { samplePlan, type DexterPlan, type DexterScreen, type Paper } from "./mock-plan";
 
 export type ReportHighlight = { key: string; reportId: string; start: number; end: number; text: string; correction?: string };
@@ -8,6 +9,12 @@ type DexterState = {
   currentScreen: DexterScreen;
   hypothesis: string;
   plan: DexterPlan;
+  qcPayload: QcResponse;
+  qcStatus: "idle" | "loading" | "success" | "error";
+  planStatus: "idle" | "streaming" | "success" | "error";
+  apiError: string | null;
+  streamedActivity: string[];
+  streamedSections: DexterPlan["sections"];
   currentlySelectedPaper: Paper | null;
   visitedNodeIds: Set<string>;
   bookmarkedNodeIds: Set<string>;
@@ -16,6 +23,11 @@ type DexterState = {
   setCurrentScreen: (screen: DexterScreen) => void;
   goToPreviousScreen: () => void;
   setHypothesis: (hypothesis: string) => void;
+  startQc: () => void;
+  finishQc: (payload: QcResponse) => void;
+  failApi: (message: string) => void;
+  startPlanStream: () => void;
+  applyPlanStreamEvent: (event: PlanStreamEvent) => void;
   selectPaper: (paper: Paper | null) => void;
   markNodeVisited: (paperId: string) => void;
   toggleNodeBookmark: (paperId: string) => void;
@@ -34,6 +46,12 @@ export const useDexterStore = create<DexterState>((set) => ({
   currentScreen: "LOADING",
   hypothesis: samplePlan.hypothesis,
   plan: samplePlan,
+  qcPayload: planToQcResponse(samplePlan),
+  qcStatus: "idle",
+  planStatus: "idle",
+  apiError: null,
+  streamedActivity: [],
+  streamedSections: [],
   currentlySelectedPaper: null,
   visitedNodeIds: new Set(),
   bookmarkedNodeIds: new Set(),
@@ -45,6 +63,33 @@ export const useDexterStore = create<DexterState>((set) => ({
       currentScreen: previousScreen[state.currentScreen] ?? state.currentScreen,
     })),
   setHypothesis: (hypothesis) => set({ hypothesis }),
+  startQc: () => set({ qcStatus: "loading", apiError: null }),
+  finishQc: (qcPayload) =>
+    set((state) => ({
+      qcPayload,
+      qcStatus: "success",
+      apiError: null,
+      currentScreen: "LITERATURE_GRAPH",
+      plan: { ...state.plan, ...qcPayload, sections: state.plan.sections, hypothesis: qcPayload.hypothesis },
+      currentlySelectedPaper: null,
+      visitedNodeIds: new Set(),
+      bookmarkedNodeIds: new Set(),
+    })),
+  failApi: (apiError) => set({ apiError, qcStatus: "error", planStatus: "error" }),
+  startPlanStream: () =>
+    set({
+      currentScreen: "PLAN_GENERATING",
+      planStatus: "streaming",
+      apiError: null,
+      streamedActivity: [],
+      streamedSections: [],
+    }),
+  applyPlanStreamEvent: (event) => {
+    if (event.type === "activity") set((state) => ({ streamedActivity: [...state.streamedActivity, event.message] }));
+    if (event.type === "section") set((state) => ({ streamedSections: [...state.streamedSections, event.section] }));
+    if (event.type === "final") set({ plan: event.plan, planStatus: "success", currentScreen: "PLAN_VIEW", streamedSections: event.plan.sections });
+    if (event.type === "error") set({ apiError: event.message, planStatus: "error" });
+  },
   selectPaper: (currentlySelectedPaper) => set({ currentlySelectedPaper }),
   markNodeVisited: (paperId) =>
     set((state) => {
