@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { type PlanStreamEvent, type QcResponse } from "@/lib/dexter-api";
 import { type ReportHighlight, useDexterStore } from "@/lib/dexter-store";
 import { exampleHypotheses, type Paper, type PlanSection } from "@/lib/mock-plan";
+import type { CorrectionSeverityType } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -226,9 +227,9 @@ function HypothesisInputScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hypothesis }),
       });
-      const payload = (await response.json()) as QcResponse | { error?: string };
+      const payload = await response.json();
       if (!response.ok) throw new Error("error" in payload && payload.error ? payload.error : "QC failed.");
-      finishQc(payload as QcResponse);
+      finishQc(payload);
     } catch (error) {
       failApi(error instanceof Error ? error.message : "QC failed.");
     }
@@ -318,6 +319,7 @@ function LiteratureGraphScreen() {
   const hypothesis = useDexterStore((state) => state.hypothesis);
   const plan = useDexterStore((state) => state.plan);
   const qcPayload = useDexterStore((state) => state.qcPayload);
+  const setPlanId = useDexterStore((state) => state.setPlanId);
   const selectedPaper = useDexterStore((state) => state.currentlySelectedPaper);
   const selectPaper = useDexterStore((state) => state.selectPaper);
   const startPlanStream = useDexterStore((state) => state.startPlanStream);
@@ -346,9 +348,10 @@ function LiteratureGraphScreen() {
       const response = await fetch("/api/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(qcPayload),
+        body: JSON.stringify({ hypothesis, novelty_check: qcPayload.novelty_check, qc_sources: qcPayload.sources }),
       });
       if (!response.ok || !response.body) throw new Error("Plan generation failed.");
+      setPlanId(response.headers.get("X-Plan-Id"));
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -359,9 +362,9 @@ function LiteratureGraphScreen() {
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
-        lines.filter(Boolean).forEach((line) => applyPlanStreamEvent(JSON.parse(line) as PlanStreamEvent));
+        lines.filter(Boolean).forEach((line) => applyPlanStreamEvent(JSON.parse(line)));
       }
-      if (buffer.trim()) applyPlanStreamEvent(JSON.parse(buffer) as PlanStreamEvent);
+      if (buffer.trim()) applyPlanStreamEvent(JSON.parse(buffer));
     } catch (error) {
       failApi(error instanceof Error ? error.message : "Plan generation failed.");
     }
@@ -893,6 +896,8 @@ function PlanGeneratingScreen() {
 function PlanViewScreen() {
   const hypothesis = useDexterStore((state) => state.hypothesis);
   const plan = useDexterStore((state) => state.plan);
+  const experimentPlan = useDexterStore((state) => state.experimentPlan);
+  const planId = useDexterStore((state) => state.planId);
   const highlights = useDexterStore((state) => state.reportHighlights);
   const setHighlights = useDexterStore((state) => state.setReportHighlights);
   const activeReference = useDexterStore((state) => state.activeReference);
@@ -904,6 +909,8 @@ function PlanViewScreen() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetId: string | null; highlightKey: string | null } | null>(null);
   const [promptBox, setPromptBox] = useState<{ x: number; y: number; action: string; pinned?: boolean } | null>(null);
   const [correctionPrompt, setCorrectionPrompt] = useState("");
+  const [correctionSeverity, setCorrectionSeverity] = useState<CorrectionSeverityType>("major");
+  const [feedbackStatus, setFeedbackStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [lasso, setLasso] = useState<{ active: boolean; drawing: boolean; points: LassoPoint[] }>({
     active: false,
@@ -1003,11 +1010,40 @@ function PlanViewScreen() {
     setContextMenu(null);
   };
 
-  const queueCorrection = () => {
+  const queueCorrection = async () => {
     if (!activeHighlightKey || !correctionPrompt.trim()) return;
+    const targetHighlight = highlights.find((highlight) => highlight.key === activeHighlightKey);
     setHighlights((current) =>
       current.map((highlight) => (highlight.key === activeHighlightKey ? { ...highlight, correction: correctionPrompt.trim() } : highlight)),
     );
+    if (targetHighlight && experimentPlan) {
+      setFeedbackStatus("saving");
+      try {
+        const response = await fetch("/api/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            plan_id: planId ?? "00000000-0000-4000-8000-000000000000",
+            experiment_type: experimentPlan.experiment_type,
+            domain: experimentPlan.domain,
+            field_corrections: [],
+            selection_comments: [{
+              id: `COMMENT-${Date.now()}`,
+              selection: { field_path: targetHighlight.reportId, start_offset: targetHighlight.start, end_offset: targetHighlight.end, selected_text: targetHighlight.text },
+              comment: correctionPrompt.trim(),
+              severity: correctionSeverity,
+              resolved: false,
+            }],
+            region_comments: [],
+            used_as_few_shot: true,
+            few_shot_tags: [experimentPlan.domain, experimentPlan.experiment_type],
+          }),
+        });
+        setFeedbackStatus(response.ok ? "saved" : "error");
+      } catch {
+        setFeedbackStatus("error");
+      }
+    }
     setCorrectionPrompt("");
     setPromptBox(null);
   };
@@ -1262,6 +1298,21 @@ function PlanViewScreen() {
             placeholder="Tell Dexter exactly how to revise this passage..."
             className="mt-3 rounded-none border-2 border-industrial bg-background text-sm"
           />
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {(["critical", "major", "minor", "suggestion"] as CorrectionSeverityType[]).map((severity) => (
+              <button
+                key={severity}
+                type="button"
+                onClick={() => setCorrectionSeverity(severity)}
+                className={cn(
+                  "border-2 border-industrial px-2 py-1 font-mono text-[10px] font-bold uppercase",
+                  correctionSeverity === severity ? "bg-accent text-accent-foreground" : "bg-secondary",
+                )}
+              >
+                {severity}
+              </button>
+            ))}
+          </div>
             <Button
               type="button"
               onClick={queueCorrection}
@@ -1270,6 +1321,7 @@ function PlanViewScreen() {
             >
             Queue correction
           </Button>
+          {feedbackStatus !== "idle" && <p className="mt-2 font-mono text-[10px] font-bold uppercase text-muted-foreground">Feedback {feedbackStatus}</p>}
         </div>
       )}
       {lasso.drawing && (
