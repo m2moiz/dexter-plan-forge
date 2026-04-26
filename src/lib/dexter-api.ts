@@ -50,6 +50,8 @@ export function buildQcResponse(hypothesis: string): QcResponse {
   };
 }
 
+export const planToQcResponse = buildQcResponse;
+
 export function buildLiteratureGraph(hypothesis: string): LiteratureGraphType {
   const papers = samplePlan.papers.map((paper, index) => ({
     id: `PAPER-${String(index + 1).padStart(3, "0")}`,
