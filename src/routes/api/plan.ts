@@ -20,6 +20,7 @@ export const Route = createFileRoute("/api/plan")({
         const parsed = PlanSchema.safeParse(await request.json().catch(() => null));
         if (!parsed.success) return Response.json({ error: "QC payload is required before plan generation." }, { status: 400 });
 
+        const planId = crypto.randomUUID();
         const plan = buildPlanFromSpecRequest(parsed.data);
         const dexterPlan = experimentPlanToDexterPlan(plan);
         const stream = new ReadableStream<Uint8Array>({
@@ -41,6 +42,7 @@ export const Route = createFileRoute("/api/plan")({
           headers: {
             "Content-Type": "application/x-ndjson; charset=utf-8",
             "Cache-Control": "no-cache, no-transform",
+            "X-Plan-Id": planId,
           },
         });
       },
