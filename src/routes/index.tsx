@@ -7,6 +7,7 @@ import { Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { type PlanStreamEvent, type QcResponse } from "@/lib/dexter-api";
 import { type ReportHighlight, useDexterStore } from "@/lib/dexter-store";
 import { exampleHypotheses, type Paper, type PlanSection } from "@/lib/mock-plan";
 import { cn } from "@/lib/utils";
@@ -211,7 +212,27 @@ function LoadingScreen() {
 function HypothesisInputScreen() {
   const hypothesis = useDexterStore((state) => state.hypothesis);
   const setHypothesis = useDexterStore((state) => state.setHypothesis);
-  const setCurrentScreen = useDexterStore((state) => state.setCurrentScreen);
+  const qcStatus = useDexterStore((state) => state.qcStatus);
+  const apiError = useDexterStore((state) => state.apiError);
+  const startQc = useDexterStore((state) => state.startQc);
+  const finishQc = useDexterStore((state) => state.finishQc);
+  const failApi = useDexterStore((state) => state.failApi);
+
+  const runQc = async () => {
+    startQc();
+    try {
+      const response = await fetch("/api/qc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hypothesis }),
+      });
+      const payload = (await response.json()) as QcResponse | { error?: string };
+      if (!response.ok) throw new Error("error" in payload && payload.error ? payload.error : "QC failed.");
+      finishQc(payload as QcResponse);
+    } catch (error) {
+      failApi(error instanceof Error ? error.message : "QC failed.");
+    }
+  };
 
   return (
     <main className={cn(screenClass, "flex min-h-screen flex-col")}> 
@@ -250,11 +271,13 @@ function HypothesisInputScreen() {
         </div>
         <Button
           type="button"
-          onClick={() => setCurrentScreen("LITERATURE_GRAPH")}
+          onClick={runQc}
+          disabled={qcStatus === "loading" || hypothesis.trim().length < 20}
           className="dexter-cta-shadow mt-10 h-16 rounded-none border-2 border-industrial bg-accent px-10 font-mono text-base font-bold uppercase text-accent-foreground hover:bg-accent hover:shadow-[8px_8px_0px_var(--industrial)]"
         >
-          GENERATE PLAN
+          {qcStatus === "loading" ? "RUNNING QC..." : "GENERATE PLAN"}
         </Button>
+        {apiError && <p className="mx-auto mt-4 max-w-xl font-mono text-xs font-bold uppercase text-accent">{apiError}</p>}
         </div>
       </section>
     </main>
