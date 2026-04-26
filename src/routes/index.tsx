@@ -1298,6 +1298,21 @@ function PlanViewScreen() {
             placeholder="Tell Dexter exactly how to revise this passage..."
             className="mt-3 rounded-none border-2 border-industrial bg-background text-sm"
           />
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {(["critical", "major", "minor", "suggestion"] as CorrectionSeverityType[]).map((severity) => (
+              <button
+                key={severity}
+                type="button"
+                onClick={() => setCorrectionSeverity(severity)}
+                className={cn(
+                  "border-2 border-industrial px-2 py-1 font-mono text-[10px] font-bold uppercase",
+                  correctionSeverity === severity ? "bg-accent text-accent-foreground" : "bg-secondary",
+                )}
+              >
+                {severity}
+              </button>
+            ))}
+          </div>
             <Button
               type="button"
               onClick={queueCorrection}
@@ -1306,6 +1321,7 @@ function PlanViewScreen() {
             >
             Queue correction
           </Button>
+          {feedbackStatus !== "idle" && <p className="mt-2 font-mono text-[10px] font-bold uppercase text-muted-foreground">Feedback {feedbackStatus}</p>}
         </div>
       )}
       {lasso.drawing && (
