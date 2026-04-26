@@ -10,33 +10,53 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiQcRouteImport } from './routes/api/qc'
+import { Route as ApiPlanRouteImport } from './routes/api/plan'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiQcRoute = ApiQcRouteImport.update({
+  id: '/api/qc',
+  path: '/api/qc',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPlanRoute = ApiPlanRouteImport.update({
+  id: '/api/plan',
+  path: '/api/plan',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/plan': typeof ApiPlanRoute
+  '/api/qc': typeof ApiQcRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/plan': typeof ApiPlanRoute
+  '/api/qc': typeof ApiQcRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/plan': typeof ApiPlanRoute
+  '/api/qc': typeof ApiQcRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/api/plan' | '/api/qc'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/plan' | '/api/qc'
+  id: '__root__' | '/' | '/api/plan' | '/api/qc'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiPlanRoute: typeof ApiPlanRoute
+  ApiQcRoute: typeof ApiQcRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +68,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/qc': {
+      id: '/api/qc'
+      path: '/api/qc'
+      fullPath: '/api/qc'
+      preLoaderRoute: typeof ApiQcRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/plan': {
+      id: '/api/plan'
+      path: '/api/plan'
+      fullPath: '/api/plan'
+      preLoaderRoute: typeof ApiPlanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiPlanRoute: ApiPlanRoute,
+  ApiQcRoute: ApiQcRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
