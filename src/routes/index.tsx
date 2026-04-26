@@ -317,9 +317,12 @@ function WorkflowBackButton() {
 function LiteratureGraphScreen() {
   const hypothesis = useDexterStore((state) => state.hypothesis);
   const plan = useDexterStore((state) => state.plan);
+  const qcPayload = useDexterStore((state) => state.qcPayload);
   const selectedPaper = useDexterStore((state) => state.currentlySelectedPaper);
   const selectPaper = useDexterStore((state) => state.selectPaper);
-  const beginPlanGeneration = useDexterStore((state) => state.beginPlanGeneration);
+  const startPlanStream = useDexterStore((state) => state.startPlanStream);
+  const applyPlanStreamEvent = useDexterStore((state) => state.applyPlanStreamEvent);
+  const failApi = useDexterStore((state) => state.failApi);
   const visitedNodeIds = useDexterStore((state) => state.visitedNodeIds);
   const bookmarkedNodeIds = useDexterStore((state) => state.bookmarkedNodeIds);
   const markNodeVisited = useDexterStore((state) => state.markNodeVisited);
@@ -336,6 +339,33 @@ function LiteratureGraphScreen() {
   const [graphSize, setGraphSize] = useState({ width: 1200, height: 720 });
   const graphWrapRef = useRef<HTMLDivElement | null>(null);
   const selectedPaperId = selectedPaper?.id;
+
+  const generatePlan = async () => {
+    startPlanStream();
+    try {
+      const response = await fetch("/api/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(qcPayload),
+      });
+      if (!response.ok || !response.body) throw new Error("Plan generation failed.");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        lines.filter(Boolean).forEach((line) => applyPlanStreamEvent(JSON.parse(line) as PlanStreamEvent));
+      }
+      if (buffer.trim()) applyPlanStreamEvent(JSON.parse(buffer) as PlanStreamEvent);
+    } catch (error) {
+      failApi(error instanceof Error ? error.message : "Plan generation failed.");
+    }
+  };
 
   const graphData = useMemo<ForceGraphData>(
     () => ({
@@ -658,7 +688,7 @@ function LiteratureGraphScreen() {
       <WorkflowHeader title={hypothesis}>
         <Button
           type="button"
-          onClick={beginPlanGeneration}
+          onClick={generatePlan}
           className="h-10 shrink-0 rounded-none border-2 border-industrial bg-accent px-5 font-mono text-xs font-bold uppercase text-accent-foreground hover:bg-accent"
         >
           Continue to Plan
