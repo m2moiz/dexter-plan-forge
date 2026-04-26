@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiQcRouteImport } from './routes/api/qc'
 import { Route as ApiPlanRouteImport } from './routes/api/plan'
+import { Route as ApiLiteratureGraphRouteImport } from './routes/api/literature.graph'
+import { Route as ApiLiteratureExpandRouteImport } from './routes/api/literature.expand'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +30,69 @@ const ApiPlanRoute = ApiPlanRouteImport.update({
   path: '/api/plan',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiLiteratureGraphRoute = ApiLiteratureGraphRouteImport.update({
+  id: '/api/literature/graph',
+  path: '/api/literature/graph',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLiteratureExpandRoute = ApiLiteratureExpandRouteImport.update({
+  id: '/api/literature/expand',
+  path: '/api/literature/expand',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/plan': typeof ApiPlanRoute
   '/api/qc': typeof ApiQcRoute
+  '/api/literature/expand': typeof ApiLiteratureExpandRoute
+  '/api/literature/graph': typeof ApiLiteratureGraphRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/plan': typeof ApiPlanRoute
   '/api/qc': typeof ApiQcRoute
+  '/api/literature/expand': typeof ApiLiteratureExpandRoute
+  '/api/literature/graph': typeof ApiLiteratureGraphRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/plan': typeof ApiPlanRoute
   '/api/qc': typeof ApiQcRoute
+  '/api/literature/expand': typeof ApiLiteratureExpandRoute
+  '/api/literature/graph': typeof ApiLiteratureGraphRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/plan' | '/api/qc'
+  fullPaths:
+    | '/'
+    | '/api/plan'
+    | '/api/qc'
+    | '/api/literature/expand'
+    | '/api/literature/graph'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/plan' | '/api/qc'
-  id: '__root__' | '/' | '/api/plan' | '/api/qc'
+  to:
+    | '/'
+    | '/api/plan'
+    | '/api/qc'
+    | '/api/literature/expand'
+    | '/api/literature/graph'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/plan'
+    | '/api/qc'
+    | '/api/literature/expand'
+    | '/api/literature/graph'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiPlanRoute: typeof ApiPlanRoute
   ApiQcRoute: typeof ApiQcRoute
+  ApiLiteratureExpandRoute: typeof ApiLiteratureExpandRoute
+  ApiLiteratureGraphRoute: typeof ApiLiteratureGraphRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +118,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPlanRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/literature/graph': {
+      id: '/api/literature/graph'
+      path: '/api/literature/graph'
+      fullPath: '/api/literature/graph'
+      preLoaderRoute: typeof ApiLiteratureGraphRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/literature/expand': {
+      id: '/api/literature/expand'
+      path: '/api/literature/expand'
+      fullPath: '/api/literature/expand'
+      preLoaderRoute: typeof ApiLiteratureExpandRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +139,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiPlanRoute: ApiPlanRoute,
   ApiQcRoute: ApiQcRoute,
+  ApiLiteratureExpandRoute: ApiLiteratureExpandRoute,
+  ApiLiteratureGraphRoute: ApiLiteratureGraphRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
