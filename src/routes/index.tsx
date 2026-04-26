@@ -896,6 +896,8 @@ function PlanGeneratingScreen() {
 function PlanViewScreen() {
   const hypothesis = useDexterStore((state) => state.hypothesis);
   const plan = useDexterStore((state) => state.plan);
+  const experimentPlan = useDexterStore((state) => state.experimentPlan);
+  const planId = useDexterStore((state) => state.planId);
   const highlights = useDexterStore((state) => state.reportHighlights);
   const setHighlights = useDexterStore((state) => state.setReportHighlights);
   const activeReference = useDexterStore((state) => state.activeReference);
@@ -907,6 +909,8 @@ function PlanViewScreen() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetId: string | null; highlightKey: string | null } | null>(null);
   const [promptBox, setPromptBox] = useState<{ x: number; y: number; action: string; pinned?: boolean } | null>(null);
   const [correctionPrompt, setCorrectionPrompt] = useState("");
+  const [correctionSeverity, setCorrectionSeverity] = useState<CorrectionSeverityType>("major");
+  const [feedbackStatus, setFeedbackStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [lasso, setLasso] = useState<{ active: boolean; drawing: boolean; points: LassoPoint[] }>({
     active: false,
@@ -1006,11 +1010,40 @@ function PlanViewScreen() {
     setContextMenu(null);
   };
 
-  const queueCorrection = () => {
+  const queueCorrection = async () => {
     if (!activeHighlightKey || !correctionPrompt.trim()) return;
+    const targetHighlight = highlights.find((highlight) => highlight.key === activeHighlightKey);
     setHighlights((current) =>
       current.map((highlight) => (highlight.key === activeHighlightKey ? { ...highlight, correction: correctionPrompt.trim() } : highlight)),
     );
+    if (targetHighlight && experimentPlan) {
+      setFeedbackStatus("saving");
+      try {
+        const response = await fetch("/api/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            plan_id: planId ?? "00000000-0000-4000-8000-000000000000",
+            experiment_type: experimentPlan.experiment_type,
+            domain: experimentPlan.domain,
+            field_corrections: [],
+            selection_comments: [{
+              id: `COMMENT-${Date.now()}`,
+              selection: { field_path: targetHighlight.reportId, start_offset: targetHighlight.start, end_offset: targetHighlight.end, selected_text: targetHighlight.text },
+              comment: correctionPrompt.trim(),
+              severity: correctionSeverity,
+              resolved: false,
+            }],
+            region_comments: [],
+            used_as_few_shot: true,
+            few_shot_tags: [experimentPlan.domain, experimentPlan.experiment_type],
+          }),
+        });
+        setFeedbackStatus(response.ok ? "saved" : "error");
+      } catch {
+        setFeedbackStatus("error");
+      }
+    }
     setCorrectionPrompt("");
     setPromptBox(null);
   };
