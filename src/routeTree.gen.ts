@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiQcRouteImport } from './routes/api/qc'
 import { Route as ApiPlanRouteImport } from './routes/api/plan'
+import { Route as ApiFeedbackRouteImport } from './routes/api/feedback'
 import { Route as ApiLiteratureGraphRouteImport } from './routes/api/literature.graph'
 import { Route as ApiLiteratureExpandRouteImport } from './routes/api/literature.expand'
 
@@ -30,6 +31,11 @@ const ApiPlanRoute = ApiPlanRouteImport.update({
   path: '/api/plan',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFeedbackRoute = ApiFeedbackRouteImport.update({
+  id: '/api/feedback',
+  path: '/api/feedback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiLiteratureGraphRoute = ApiLiteratureGraphRouteImport.update({
   id: '/api/literature/graph',
   path: '/api/literature/graph',
@@ -43,6 +49,7 @@ const ApiLiteratureExpandRoute = ApiLiteratureExpandRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/api/plan': typeof ApiPlanRoute
   '/api/qc': typeof ApiQcRoute
   '/api/literature/expand': typeof ApiLiteratureExpandRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/api/plan': typeof ApiPlanRoute
   '/api/qc': typeof ApiQcRoute
   '/api/literature/expand': typeof ApiLiteratureExpandRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/api/plan': typeof ApiPlanRoute
   '/api/qc': typeof ApiQcRoute
   '/api/literature/expand': typeof ApiLiteratureExpandRoute
@@ -67,6 +76,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/api/feedback'
     | '/api/plan'
     | '/api/qc'
     | '/api/literature/expand'
@@ -74,6 +84,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/api/feedback'
     | '/api/plan'
     | '/api/qc'
     | '/api/literature/expand'
@@ -81,6 +92,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/api/feedback'
     | '/api/plan'
     | '/api/qc'
     | '/api/literature/expand'
@@ -89,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiFeedbackRoute: typeof ApiFeedbackRoute
   ApiPlanRoute: typeof ApiPlanRoute
   ApiQcRoute: typeof ApiQcRoute
   ApiLiteratureExpandRoute: typeof ApiLiteratureExpandRoute
@@ -118,6 +131,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPlanRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/feedback': {
+      id: '/api/feedback'
+      path: '/api/feedback'
+      fullPath: '/api/feedback'
+      preLoaderRoute: typeof ApiFeedbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/literature/graph': {
       id: '/api/literature/graph'
       path: '/api/literature/graph'
@@ -137,6 +157,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiFeedbackRoute: ApiFeedbackRoute,
   ApiPlanRoute: ApiPlanRoute,
   ApiQcRoute: ApiQcRoute,
   ApiLiteratureExpandRoute: ApiLiteratureExpandRoute,
