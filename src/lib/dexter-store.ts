@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { type PlanStreamEvent, type QcResponse, planToQcResponse } from "./dexter-api";
+import { type PlanStreamEvent, type QcResponse, buildQcResponse, experimentPlanToDexterPlan } from "./dexter-api";
 import { samplePlan, type DexterPlan, type DexterScreen, type Paper } from "./mock-plan";
 
 export type ReportHighlight = { key: string; reportId: string; start: number; end: number; text: string; correction?: string };
@@ -46,7 +46,7 @@ export const useDexterStore = create<DexterState>((set) => ({
   currentScreen: "LOADING",
   hypothesis: samplePlan.hypothesis,
   plan: samplePlan,
-  qcPayload: planToQcResponse(samplePlan),
+  qcPayload: buildQcResponse(samplePlan.hypothesis),
   qcStatus: "idle",
   planStatus: "idle",
   apiError: null,
@@ -70,7 +70,7 @@ export const useDexterStore = create<DexterState>((set) => ({
       qcStatus: "success",
       apiError: null,
       currentScreen: "LITERATURE_GRAPH",
-      plan: { ...state.plan, ...qcPayload, sections: state.plan.sections, hypothesis: qcPayload.hypothesis },
+      plan: { ...state.plan, citations: qcPayload.sources.map((source) => `${source.id} — ${source.title}`), comments: [qcPayload.novelty_check.summary] },
       currentlySelectedPaper: null,
       visitedNodeIds: new Set(),
       bookmarkedNodeIds: new Set(),
@@ -87,7 +87,10 @@ export const useDexterStore = create<DexterState>((set) => ({
   applyPlanStreamEvent: (event) => {
     if (event.type === "activity") set((state) => ({ streamedActivity: [...state.streamedActivity, event.message] }));
     if (event.type === "section") set((state) => ({ streamedSections: [...state.streamedSections, event.section] }));
-    if (event.type === "final") set({ plan: event.plan, planStatus: "success", currentScreen: "PLAN_VIEW", streamedSections: event.plan.sections });
+    if (event.type === "final") {
+      const plan = experimentPlanToDexterPlan(event.plan);
+      set({ plan, planStatus: "success", currentScreen: "PLAN_VIEW", streamedSections: plan.sections });
+    }
     if (event.type === "error") set({ apiError: event.message, planStatus: "error" });
   },
   selectPaper: (currentlySelectedPaper) => set({ currentlySelectedPaper }),
