@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import { type PlanStreamEvent, type QcResponse, buildQcResponse, experimentPlanToDexterPlan } from "./dexter-api";
 import { samplePlan, type DexterPlan, type DexterScreen, type Paper } from "./mock-plan";
+import type { ExperimentPlan } from "./schema";
 
 export type ReportHighlight = { key: string; reportId: string; start: number; end: number; text: string; correction?: string };
 
@@ -9,6 +10,8 @@ type DexterState = {
   currentScreen: DexterScreen;
   hypothesis: string;
   plan: DexterPlan;
+  experimentPlan: ExperimentPlan | null;
+  planId: string | null;
   qcPayload: QcResponse;
   qcStatus: "idle" | "loading" | "success" | "error";
   planStatus: "idle" | "streaming" | "success" | "error";
@@ -23,6 +26,7 @@ type DexterState = {
   setCurrentScreen: (screen: DexterScreen) => void;
   goToPreviousScreen: () => void;
   setHypothesis: (hypothesis: string) => void;
+  setPlanId: (planId: string | null) => void;
   startQc: () => void;
   finishQc: (payload: QcResponse) => void;
   failApi: (message: string) => void;
@@ -46,6 +50,8 @@ export const useDexterStore = create<DexterState>((set) => ({
   currentScreen: "LOADING",
   hypothesis: samplePlan.hypothesis,
   plan: samplePlan,
+  experimentPlan: null,
+  planId: null,
   qcPayload: buildQcResponse(samplePlan.hypothesis),
   qcStatus: "idle",
   planStatus: "idle",
@@ -63,6 +69,7 @@ export const useDexterStore = create<DexterState>((set) => ({
       currentScreen: previousScreen[state.currentScreen] ?? state.currentScreen,
     })),
   setHypothesis: (hypothesis) => set({ hypothesis }),
+  setPlanId: (planId) => set({ planId }),
   startQc: () => set({ qcStatus: "loading", apiError: null }),
   finishQc: (qcPayload) =>
     set((state) => ({
@@ -81,6 +88,7 @@ export const useDexterStore = create<DexterState>((set) => ({
       currentScreen: "PLAN_GENERATING",
       planStatus: "streaming",
       apiError: null,
+      planId: null,
       streamedActivity: [],
       streamedSections: [],
     }),
@@ -89,7 +97,7 @@ export const useDexterStore = create<DexterState>((set) => ({
     if (event.type === "section") set((state) => ({ streamedSections: [...state.streamedSections, event.section] }));
     if (event.type === "final") {
       const plan = experimentPlanToDexterPlan(event.plan);
-      set({ plan, planStatus: "success", currentScreen: "PLAN_VIEW", streamedSections: plan.sections });
+      set({ plan, experimentPlan: event.plan, planStatus: "success", currentScreen: "PLAN_VIEW", streamedSections: plan.sections });
     }
     if (event.type === "error") set({ apiError: event.message, planStatus: "error" });
   },
